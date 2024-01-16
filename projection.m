@@ -1,12 +1,13 @@
+max_iter = 500;
+eps = .001;
+M = 200;    % Number of trajectories
+H = 50;     % Trajectory length
+n_simulations = 100000;   % Monte carlo optimization
+
 % Initialize states
 n_states = 5;
 n_actions = 3;
 gamma = 1;
-max_iter = 100;
-eps = .0001;
-M = 200;    % Number of trajectories
-H = 20;     % Trajectory length
-n_simulations = 100000;   % Monte carlo optimization
 
 %%
 % Initialize transition matrix, features, and initial distribution
@@ -31,27 +32,30 @@ reward_expert(n_states) = 1;
 % Find optimal policy
 [value_expert,policy_expert] = value_iteration(transition_probability,reward_expert,gamma);
 
+
+
 %%
 % Apprenticeship learning
-% reward_learner = rand(n_states,1);
-% reward_learner = reward_learner/sum(reward_learner);
-fe_learner = zeros(n_states,1);
-fe_learner_store = zeros(n_states,max_iter);
 t_store = zeros(max_iter,1);
+policy_learner = ones(n_states,1);
 
-% Find expert feature expectation
+% Find feature expectations
 fe_expert = feature_expectation(transition_probability,policy_expert,features,n_states,M,H,gamma,s0);
+% fe_learner = feature_expectation(transition_probability,policy_learner,features,n_states,M,H,gamma,s0);
+fe_learner = zeros(n_states,1);
 
 for k = 1:max_iter
-    [reward_learner,t] = monte_carlo_optim(reward_learner,fe_expert,fe_learner_store,n_simulations,k);
-    t_store(k) = t;
-    if t <= eps && t ~= 0
-        disp(['t = ' num2str(t)])
-        break;
-    end
+    fe_learner_old = fe_learner;
+    reward_learner = fe_expert - fe_learner_old;
     [value_learner,policy_learner] = value_iteration(transition_probability,reward_learner,gamma);
     fe_learner = feature_expectation(transition_probability,policy_learner,features,n_states,M,H,gamma,s0);
-    fe_learner_store(:,k) = fe_learner;
+    fe_learner = fe_learner_old + .1*((fe_learner-fe_learner_old)'*(fe_expert-fe_learner_old))/((fe_learner-fe_learner_old)'*(fe_learner-fe_learner_old))*(fe_learner-fe_learner_old);
+    t = norm(fe_expert - fe_learner);
+    t_store(k) = t;
+    if t < eps
+        disp(['t = ' num2str(t)]);
+        break;
+    end
 end
 
 % Plot expert
@@ -91,28 +95,4 @@ function fe = feature_expectation(transition_probability,policy,features,n_state
         end
     end
     fe = fe ./ M;
-end
-
-function [reward_learner, t] = monte_carlo_optim(reward_learner,fe_expert,fe_learner_store,n_simulations,k)
-    % alpha_simulations = rand(n_simulations,length(reward_learner));
-    % margins = zeros(n_simulations,1);
-    % for i = 1:k
-    %     margin_k = alpha_simulations*(fe_expert - fe_learner_store(:,k));
-    %     margin_k = margin_k + (2.*(margin_k < 0));
-    %     margins = margins + margin_k;
-    % end
-    % [M,I] = max(margins);
-    % reward_learner = alpha_simulations(I,:);
-    alpha_simulations = rand(n_simulations,length(reward_learner));
-    alpha_simulations = alpha_simulations./sum(alpha_simulations,2);
-    margins = zeros(k,n_simulations);
-    t = -Inf;
-    for i = 1:k
-        fe_learner = fe_learner_store(:,k);
-        margins(i,:) = -1*alpha_simulations*(fe_learner - fe_expert);
-    end
-    margins = min(margins);
-    [M,I] = max(margins);
-    reward_learner = alpha_simulations(I,:);
-    t = M;
 end
